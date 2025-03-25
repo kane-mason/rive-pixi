@@ -50,8 +50,9 @@ function updateGridLayout() {
     const cellWidth = app.screen.width / layout.cols;
     const cellHeight = app.screen.height / layout.rows;
     
-    // Use 90% of the smallest cell dimension to ensure padding
-    const size = Math.min(cellWidth, cellHeight) * 0.9;
+    // Calculate content dimensions (90% of cell size)
+    const contentWidth = cellWidth * 0.9;
+    const contentHeight = cellHeight * 0.9;
     
     // Clear previous debug graphics
     debugGraphics.clear();
@@ -74,13 +75,13 @@ function updateGridLayout() {
             const centerX = cellWidth * col + (cellWidth / 2);
             const centerY = cellHeight * row + (cellHeight / 2);
             
-            // Draw the actual content area (square, centered in cell)
+            // Draw the actual content area (90% of cell dimensions)
             debugGraphics.lineStyle(1, 0xff0000, 0.5);  // 1px red line with 0.5 alpha
             debugGraphics.drawRect(
-                centerX - (size / 2),    // x (centered)
-                centerY - (size / 2),    // y (centered)
-                size,                    // width
-                size                     // height
+                centerX - (contentWidth / 2),     // x (centered)
+                centerY - (contentHeight / 2),    // y (centered)
+                contentWidth,                     // width
+                contentHeight                     // height
             );
         }
     }
@@ -97,9 +98,9 @@ function updateGridLayout() {
         sprite.x = centerX;
         sprite.y = centerY;
         
-        // Set size and update
-        sprite.maxWidth = size;
-        sprite.maxHeight = size;
+        // Set size to 90% of cell dimensions
+        sprite.maxWidth = contentWidth;
+        sprite.maxHeight = contentHeight;
         
         // Set fit mode to ensure animation fills the space properly
         sprite.fit = Fit.Fill;
