@@ -63,15 +63,18 @@ type RiveOptions = {
  * @param {number} maxHeight max height of sprite (original Rive artboard size will be used if maxHeight is not set)
  */
 export declare class RiveSprite extends Sprite {
-    private _animFrame;
-    private _lastTime;
-    private _enabled;
-    private _debug;
+    private static fileCache;
+    private static riveInstance?;
     private _rive?;
     private _file?;
-    private _aligned?;
     private _renderer?;
     private _canvas?;
+    private _enabled;
+    private _animFrame;
+    private _lastTime;
+    private _debug;
+    private _aligned?;
+    private _assetKey;
     maxWidth: number;
     maxHeight: number;
     fit: Fit;
@@ -81,38 +84,20 @@ export declare class RiveSprite extends Sprite {
     inputFields: Map<string, SMIInput>;
     onStateChange?: Function;
     artboard?: Artboard;
-    /**
-     * Constructor will load Rive wasm if it not loaded yet
-     * and create instances of Rive scene components (artboard, animation, stateMachine)
-     * after initialize will call onReady method and run animation if autoPlay was setted
-     * @param {RiveOptions} options initial component options
-     */
     constructor(options: RiveOptions);
-    /**
-     * Will load wasm and rive sprite asset from assets library
-     * also create offscreen canvas and rive renderer
-     * @param {string} name name of the asset element
-     */
     private initRive;
+    private createCanvas;
+    private renderLoop;
+    loadArtboard(artboard: string | undefined): void;
+    updateSize(): void;
+    enable(): void;
+    disable(): void;
+    destroy(): void;
     /**
      * Attach pointer events to the pixi sprite and pass them to the Rive state machine
      * @param {boolean} interactive true if we need to attach pointer events to sprite
      */
     private initEvents;
-    /**
-     * Enable rive scene animation
-     */
-    enable(): void;
-    /**
-     * Disable rive scene animation
-     */
-    disable(): void;
-    /**
-     * Load Rive scene artboard by name or load default artboard if name is not set
-     * Rive should be initialized before (RiveOptions.onReady was emited)
-     * @param {string|number} artboard name of the loading artboard
-     */
-    loadArtboard(artboard: string | undefined): void;
     /**
      * Load Rive state machines by names or load first state machine
      * Artbaord should be loaded before
@@ -153,26 +138,11 @@ export declare class RiveSprite extends Sprite {
      */
     getAvailableAnimations(): string[];
     /**
-     * Recalculate and update sizes of ofscreencanvas due to artboard size
-     * Artboard should be loaded before
-     */
-    updateSize(): void;
-    /**
      * Convert global Pixi.js coordinates to Rive point coordinates
      * @param {{x:number,y:number}} global point coordinates
      * @returns
      */
     private translatePoint;
-    /**
-     * Will create offscreen canvas
-     * In debug mode will create a regular canvas and display it over the page
-     */
-    private createCanvas;
-    /**
-     * Update animation and state machine progress
-     * @param {number} time delta time from last animation frame (in seconds)
-     */
-    private renderLoop;
     /**
      * Play all state machines animations
      * @param {number} elapsed time from last update
@@ -204,9 +174,5 @@ export declare class RiveSprite extends Sprite {
      * @param {string} name of the trigger field
      */
     fireTrigger(name: string): void;
-    /**
-     * Destroy all component resources
-     */
-    destroy(): void;
 }
 export {};

@@ -28,6 +28,10 @@ const riveUrl = 'https://cdn.rive.app/animations/vehicles.riv';
 const instances = [];
 let instanceCount = 0;
 
+// Store debug graphics
+const debugGraphics = new PIXI.Graphics();
+app.stage.addChild(debugGraphics);
+
 // Function to calculate grid layout
 function calculateGridLayout(count) {
     if (count <= 1) return { cols: 1, rows: 1 };
@@ -41,18 +45,66 @@ function calculateGridLayout(count) {
 // Function to position instances in grid
 function updateGridLayout() {
     const layout = calculateGridLayout(instances.length);
+    
+    // Calculate cell dimensions
     const cellWidth = app.screen.width / layout.cols;
     const cellHeight = app.screen.height / layout.rows;
-
+    
+    // Use 90% of the smallest cell dimension to ensure padding
+    const size = Math.min(cellWidth, cellHeight) * 0.9;
+    
+    // Clear previous debug graphics
+    debugGraphics.clear();
+    
+    // Draw debug grid
+    debugGraphics.lineStyle(2, 0x00ff00, 0.5);  // 2px green line with 0.5 alpha
+    
+    // Draw all cells in the grid
+    for (let row = 0; row < layout.rows; row++) {
+        for (let col = 0; col < layout.cols; col++) {
+            // Draw cell border
+            debugGraphics.drawRect(
+                cellWidth * col,           // x
+                cellHeight * row,          // y
+                cellWidth,                 // width
+                cellHeight                 // height
+            );
+            
+            // Calculate center position of this cell
+            const centerX = cellWidth * col + (cellWidth / 2);
+            const centerY = cellHeight * row + (cellHeight / 2);
+            
+            // Draw the actual content area (square, centered in cell)
+            debugGraphics.lineStyle(1, 0xff0000, 0.5);  // 1px red line with 0.5 alpha
+            debugGraphics.drawRect(
+                centerX - (size / 2),    // x (centered)
+                centerY - (size / 2),    // y (centered)
+                size,                    // width
+                size                     // height
+            );
+        }
+    }
+    
     instances.forEach((sprite, index) => {
         const row = Math.floor(index / layout.cols);
         const col = index % layout.cols;
         
-        // Update sprite position and size
-        sprite.x = cellWidth * (col + 0.5);
-        sprite.y = cellHeight * (row + 0.5);
-        sprite.maxWidth = cellWidth * 0.9; // 90% of cell width
-        sprite.maxHeight = cellHeight * 0.9; // 90% of cell height
+        // Calculate center position of each cell
+        const centerX = cellWidth * col + (cellWidth / 2);
+        const centerY = cellHeight * row + (cellHeight / 2);
+        
+        // Position sprite at cell center (since anchor is 0.5)
+        sprite.x = centerX;
+        sprite.y = centerY;
+        
+        // Set size and update
+        sprite.maxWidth = size;
+        sprite.maxHeight = size;
+        
+        // Set fit mode to ensure animation fills the space properly
+        sprite.fit = Fit.Fill;
+        
+        // Update the sprite size
         sprite.updateSize();
     });
 }
@@ -68,18 +120,18 @@ function createNewInstance() {
         asset: riveUrl,
         autoPlay: true,
         interactive: true,
-        fit: Fit.Contain,
+        fit: Fit.Fill,  // Use Fill to ensure animation takes up the full space
         align: Alignment.Center
     });
 
-    // Set the anchor point to center
+    // Set the anchor point to center for proper positioning
     riveSprite.anchor.set(0.5, 0.5);
 
     // Add to stage and instances array
     app.stage.addChild(riveSprite);
     instances.push(riveSprite);
 
-    // Update layout for all instances
+    // Update layout immediately
     updateGridLayout();
 }
 

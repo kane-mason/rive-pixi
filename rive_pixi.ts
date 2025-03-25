@@ -19,6 +19,11 @@ import Rive, {
   Mat2D,
 } from "@rive-app/canvas-advanced-single";
 
+// Add type definition at the top of the file after imports
+interface CachedRiveFile extends File {
+  refCount: number;
+}
+
 /**
  * Register Pixi.js extension for loading Rive files (.riv)
  */
@@ -116,15 +121,20 @@ type RiveOptions = {
  * @param {number} maxHeight max height of sprite (original Rive artboard size will be used if maxHeight is not set)
  */
 export class RiveSprite extends Sprite {
+  private static fileCache: Map<string, CachedRiveFile> = new Map();
+  private static riveInstance?: RiveCanvas;
+  
+  private _rive?: RiveCanvas;
+  private _file?: CachedRiveFile;
+  private _renderer?: WrappedRenderer;
+  private _canvas?: HTMLCanvasElement;
+  private _enabled: boolean = false;
   private _animFrame: number = 0;
   private _lastTime: number = 0;
-  private _enabled: boolean = false;
   private _debug: boolean = false;
-  private _rive?: RiveCanvas;
-  private _file?: File;
   private _aligned?: Mat2D;
-  private _renderer?: WrappedRenderer;
-  private _canvas?: OffscreenCanvas | HTMLCanvasElement;
+  private _assetKey: string = '';
+  
   maxWidth: number = 0;
   maxHeight: number = 0;
   fit: Fit = Fit.Contain;
@@ -135,38 +145,235 @@ export class RiveSprite extends Sprite {
   onStateChange?: Function;
   artboard?: Artboard;
 
-  /**
-   * Constructor will load Rive wasm if it not loaded yet
-   * and create instances of Rive scene components (artboard, animation, stateMachine)
-   * after initialize will call onReady method and run animation if autoPlay was setted
-   * @param {RiveOptions} options initial component options
-   */
   constructor(options: RiveOptions) {
-    super();
+    super(Texture.EMPTY);  // Start with an empty texture
     this._debug = options.debug ?? false;
     this.onStateChange = options.onStateChange;
-    this.initEvents(options!.interactive ?? false);
+    this.initEvents(options.interactive ?? false);
+    this._assetKey = typeof options.asset === 'string' ? options.asset : '';
+    
+    // Initialize Rive and load file
     this.initRive(options.asset).then(() => {
+      if (!this._rive || !this._file) return;
+      
+      // Create canvas and renderer
+      this._canvas = this.createCanvas();
+      this._renderer = this._rive.makeRenderer(this._canvas);
+      
+      // Load artboard first
       this.loadArtboard(options.artboard);
+      
+      // Set up animations and state machines
       this.loadStateMachine(options.stateMachine);
       this.playAnimation(options.animation);
-      if (options.autoPlay) this.enable();
-      else this._rive?.requestAnimationFrame(this.renderLoop);
-      if (options.onReady) options.onReady(this._rive);
+      
+      // Force an initial render to ensure texture is ready
+      if (this.artboard && this._renderer) {
+        this._renderer.clear();
+        this._renderer.save();
+        this.artboard.draw(this._renderer);
+        this._renderer.restore();
+        this._renderer.flush();
+        
+        // Create texture after initial render
+        if (this._canvas) {
+          this.texture.destroy();
+          this.texture = Texture.from(this._canvas);
+          this.texture.update();
+        }
+      }
+      
+      // Start rendering if autoplay is enabled
+      if (options.autoPlay) {
+        this.enable();
+      }
+      
+      if (options.onReady) {
+        options.onReady(this._rive);
+      }
     });
   }
 
-  /**
-   * Will load wasm and rive sprite asset from assets library
-   * also create offscreen canvas and rive renderer
-   * @param {string} name name of the asset element
-   */
   private async initRive(riv: string | Uint8Array): Promise<void> {
-    const asset = typeof riv === "string" ? await Assets.load(riv) : riv;
-    this._rive = await riveApp;
-    this._file = await this._rive.load(asset);
-    this._canvas = this.createCanvas();
-    this._renderer = this._rive.makeRenderer(this._canvas);
+    try {
+      // Initialize Rive instance if not already done
+      if (!RiveSprite.riveInstance) {
+        RiveSprite.riveInstance = await riveApp;
+      }
+      this._rive = RiveSprite.riveInstance;
+
+      // Use cached file if available
+      if (typeof riv === 'string' && RiveSprite.fileCache.has(riv)) {
+        this._file = RiveSprite.fileCache.get(riv)!;
+        this._file.refCount++;
+        return;
+      }
+
+      // Load new file
+      const asset = typeof riv === "string" ? await Assets.load(riv) : riv;
+      const file = await this._rive.load(asset) as CachedRiveFile;
+      file.refCount = 1;
+      this._file = file;
+      
+      // Cache the file if it's from a URL
+      if (typeof riv === 'string') {
+        RiveSprite.fileCache.set(riv, this._file);
+      }
+    } catch (error) {
+      console.error('Failed to initialize Rive:', error);
+    }
+  }
+
+  private createCanvas(): HTMLCanvasElement {
+    const canvas = document.createElement("canvas");
+    if (this._debug) {
+      canvas.style.position = "fixed";
+      canvas.style.top = "0";
+      canvas.style.right = "0";
+      canvas.style.border = "1px solid red";
+      document.body.appendChild(canvas);
+    }
+    return canvas;
+  }
+
+  private renderLoop = (time: number): void => {
+    if (!this._lastTime) this._lastTime = time;
+    const elapsedTime = (time - this._lastTime) / 1000;
+    this._lastTime = time;
+
+    if (this.artboard && this._renderer && this._enabled) {
+      // Update animations and state machines
+      this.advanceStateMachines(elapsedTime);
+      this.advanceAnimations(elapsedTime);
+      this.artboard.advance(elapsedTime);
+
+      // Render to canvas
+      this._renderer.clear();
+      this._renderer.save();
+      this.artboard.draw(this._renderer);
+      this._renderer.restore();
+      this._renderer.flush();
+
+      // Update Pixi texture
+      this.texture.update();
+    }
+
+    if (this._enabled) {
+      this._animFrame = this._rive!.requestAnimationFrame(this.renderLoop);
+    }
+  };
+
+  loadArtboard(artboard: string | undefined): void {
+    if (this.artboard) {
+      this.artboard.delete();
+    }
+    if (this._file) {
+      this.artboard = artboard
+        ? this._file.artboardByName(artboard)
+        : this._file.defaultArtboard();
+      
+      if (this.artboard) {
+        // Get initial bounds and set maxWidth/maxHeight if not already set
+        const bounds = this.artboard.bounds;
+        const { minX, minY, maxX, maxY } = bounds;
+        const originalWidth = maxX - minX;
+        const originalHeight = maxY - minY;
+        
+        // Set initial dimensions if not already set
+        if (!this.maxWidth && !this.maxHeight) {
+          this.maxWidth = originalWidth;
+          this.maxHeight = originalHeight;
+        }
+        
+        this.updateSize();
+      }
+    }
+  }
+
+  updateSize(): void {
+    if (this.artboard && this._rive && this._renderer && this._canvas) {
+      const bounds = this.artboard.bounds;
+      const { minX, minY, maxX, maxY } = bounds;
+      const originalWidth = maxX - minX;
+      const originalHeight = maxY - minY;
+      
+      // Always maintain aspect ratio
+      const aspectRatio = originalWidth / originalHeight;
+      
+      // If maxWidth is set, use it as the primary dimension
+      if (this.maxWidth) {
+        this.maxHeight = this.maxWidth / aspectRatio;
+      } 
+      // If maxHeight is set, use it as the primary dimension
+      else if (this.maxHeight) {
+        this.maxWidth = this.maxHeight * aspectRatio;
+      }
+      // If neither is set, use original dimensions
+      else {
+        this.maxWidth = originalWidth;
+        this.maxHeight = originalHeight;
+      }
+      
+      // Set canvas size
+      this._canvas.width = this.maxWidth;
+      this._canvas.height = this.maxHeight;
+      
+      // Update renderer alignment
+      const fit = this._rive.Fit[this.fit];
+      const align = this._rive.Alignment[this.align];
+      const frame = { minX: 0, minY: 0, maxX: this.maxWidth, maxY: this.maxHeight };
+      this._aligned = this._rive.computeAlignment(fit, align, frame, bounds);
+      this._renderer.align(fit, align, frame, bounds);
+      
+      // Update sprite dimensions
+      this.width = this.maxWidth;
+      this.height = this.maxHeight;
+      
+      // Force immediate render and texture update
+      this._renderer.clear();
+      this._renderer.save();
+      this.artboard.draw(this._renderer);
+      this._renderer.restore();
+      this._renderer.flush();
+      
+      // Destroy old texture and create new one
+      this.texture.destroy();
+      this.texture = Texture.from(this._canvas);
+      this.texture.update();
+    }
+  }
+
+  enable(): void {
+    this._enabled = true;
+    if (!this._animFrame) {
+      this._animFrame = this._rive!.requestAnimationFrame(this.renderLoop);
+    }
+  }
+
+  disable(): void {
+    this._enabled = false;
+    if (this._animFrame) {
+      this._rive!.cancelAnimationFrame(this._animFrame);
+      this._animFrame = 0;
+    }
+  }
+
+  destroy(): void {
+    super.destroy();
+    this.disable();
+    this.stateMachines.forEach(machine => machine.delete());
+    this.animations.forEach(animation => animation.delete());
+    this.artboard?.delete();
+    this._renderer?.delete();
+    
+    // Decrement reference count in file cache
+    if (this._file && this._assetKey) {
+      this._file.refCount--;
+      if (this._file.refCount <= 0) {
+        this._file.delete();
+        RiveSprite.fileCache.delete(this._assetKey);
+      }
+    }
   }
 
   /**
@@ -189,45 +396,6 @@ export class RiveSprite extends Sprite {
       const point = this.translatePoint(e.global);
       this.stateMachines.map((m) => m.pointerMove(...point));
     };
-  }
-
-  /**
-   * Enable rive scene animation
-   */
-  enable(): void {
-    this._enabled = true;
-    if (!this._animFrame && this._rive) {
-      this._animFrame = this._rive.requestAnimationFrame(this.renderLoop);
-    }
-  }
-
-  /**
-   * Disable rive scene animation
-   */
-  disable(): void {
-    this._enabled = false;
-    if (this._animFrame && this._rive) {
-      this._rive.cancelAnimationFrame(this._animFrame);
-      this._animFrame = 0;
-    }
-  }
-
-  /**
-   * Load Rive scene artboard by name or load default artboard if name is not set
-   * Rive should be initialized before (RiveOptions.onReady was emited)
-   * @param {string|number} artboard name of the loading artboard
-   */
-  loadArtboard(artboard: string | undefined): void {
-    if (this.artboard) {
-      this.artboard.delete();
-    }
-    if (this._file && this._canvas) {
-      this.artboard = artboard
-        ? this._file.artboardByName(artboard)
-        : this._file.defaultArtboard();
-      this.texture = Texture.from(this._canvas);
-    }
-    this.updateSize();
   }
 
   /**
@@ -344,29 +512,6 @@ export class RiveSprite extends Sprite {
   }
 
   /**
-   * Recalculate and update sizes of ofscreencanvas due to artboard size
-   * Artboard should be loaded before
-   */
-  updateSize(): void {
-    if (this.artboard && this._rive && this._renderer) {
-      const bounds = this.artboard.bounds;
-      const { minX, minY, maxX, maxY } = bounds;
-      const width = maxX - minX;
-      const height = maxY - minY;
-      const maxWidth = this.maxWidth || width;
-      const maxHeight = this.maxHeight || height;
-      const fit = this._rive.Fit[this.fit];
-      const align = this._rive.Alignment[this.align];
-      const frame = { minX: 0, minY: 0, maxX: maxWidth, maxY: maxHeight };
-      this._aligned = this._rive?.computeAlignment(fit, align, frame, bounds);
-      this._renderer.align(fit, align, frame, bounds);
-      this._canvas!.width = maxWidth;
-      this._canvas!.height = maxHeight;
-      this.texture.update();
-    }
-  }
-
-  /**
    * Convert global Pixi.js coordinates to Rive point coordinates
    * @param {{x:number,y:number}} global point coordinates
    * @returns
@@ -376,49 +521,6 @@ export class RiveSprite extends Sprite {
     const { tx, ty, xx, yy } = this._aligned || { tx: 0, ty: 0, xx: 1, yy: 1 };
     return [(x - tx) / xx, (y - ty) / yy];
   }
-
-  /**
-   * Will create offscreen canvas
-   * In debug mode will create a regular canvas and display it over the page
-   */
-  private createCanvas(): OffscreenCanvas | HTMLCanvasElement {
-    if (this._debug) {
-      const canvas = document.createElement("canvas");
-      canvas.style.position = "absolute";
-      canvas.style.right = "0";
-      canvas.style.top = "0";
-      canvas.style.width = "auto";
-      canvas.style.height = "auto";
-      document.body.appendChild(canvas);
-      return canvas;
-    }
-    return new OffscreenCanvas(100, 100);
-  }
-
-  /**
-   * Update animation and state machine progress
-   * @param {number} time delta time from last animation frame (in seconds)
-   */
-  private renderLoop = (time: number): void => {
-    if (!this._lastTime) this._lastTime = time;
-    const elapsedTime = (time - this._lastTime) / 1000;
-    this._lastTime = time;
-    if (this.artboard && this._renderer) {
-      this.advanceStateMachines(elapsedTime);
-      this.advanceAnimations(elapsedTime);
-      this.artboard.advance(elapsedTime);
-      this._renderer.clear();
-      this._renderer.save();
-      this.artboard.draw(this._renderer);
-      this._renderer.restore();
-      this._renderer.flush();
-      this.texture.update();
-    }
-    // TODO: add runtime alignment
-    if (this._rive && this._enabled) {
-      this._rive.requestAnimationFrame(this.renderLoop);
-    }
-  };
 
   /**
    * Play all state machines animations
@@ -499,18 +601,5 @@ export class RiveSprite extends Sprite {
     if (input && input.type === this._rive?.SMIInput.trigger) {
       input.fire();
     }
-  }
-
-  /**
-   * Destroy all component resources
-   */
-  destroy() {
-    super.destroy();
-    this.disable();
-    this.stateMachines.map((machine) => machine.delete());
-    this.animations.map((animation) => animation.delete());
-    this.artboard?.delete();
-    this._renderer?.delete();
-    this._file?.delete();
   }
 }
