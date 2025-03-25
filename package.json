@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "Rive runtime for PixiJS ",
   "type": "module",
-  "main": "rive_pixi.js",
-  "types": "rive_pixi.d.ts",
+  "main": "dist/rive_pixi.js",
+  "types": "dist/rive_pixi.d.ts",
   "keywords": [
     "pixijs",
     "rive"

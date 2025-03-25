@@ -523,7 +523,7 @@ export class RiveSprite extends Sprite {
      * @param {string} name of the input field
      * @param {number|boolean} value  of the input field
      */
-    setInputValue(name, value) {
+    setInput(name, value) {
         const input = this.inputFields.get(name);
         if (input && input.type !== this._rive?.SMIInput.trigger) {
             input.value = value;

@@ -6,7 +6,6 @@ yarn-error.log*
 
 # TypeScript
 *.tsbuildinfo
-dist/
 build/
 
 # IDE
@@ -29,7 +28,6 @@ logs/
 coverage/
 
 # Production build
-dist/
 build/
 
 # Temporary files
