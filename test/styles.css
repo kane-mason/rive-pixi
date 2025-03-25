@@ -1,0 +1,28 @@
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+canvas {
+    display: block;
+}
+
+#addButton {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #333;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#addButton:hover {
+    background: #444;
+} 
