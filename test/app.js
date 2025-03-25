@@ -16,6 +16,11 @@ document.body.appendChild(app.view);
 // Initialize stats
 const stats = new Stats(app.renderer);
 
+// Create context info panel
+const contextInfo = document.createElement('div');
+contextInfo.id = 'contextInfo';
+document.body.appendChild(contextInfo);
+
 // Example Rive animation URL - replace with your own
 const riveUrl = 'https://cdn.rive.app/animations/vehicles.riv';
 
@@ -85,9 +90,24 @@ document.getElementById('addButton').addEventListener('click', createNewInstance
 createNewInstance();
 
 // Handle window resize
-window.addEventListener('resize', updateGridLayout);
+window.addEventListener('resize', () => {
+    updateGridLayout();
+    updateContextInfo();
+});
 
 // Add stats to the animation loop
 app.ticker.add(() => {
     stats.update();
 }); 
+
+// Update context info
+function updateContextInfo() {
+  const renderer = app.renderer;
+  const gl = renderer.gl;
+  
+  contextInfo.innerHTML = `
+      Pixi: ${gl.getParameter(gl.RENDERER)}<br>
+  `;
+}
+
+updateContextInfo();
