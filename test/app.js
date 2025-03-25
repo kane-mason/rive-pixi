@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { RiveSprite, Fit, Alignment } from '../dist/rive_pixi.js';
+import { Stats } from 'pixi-stats';
 
 // Create the PixiJS application
 const app = new PIXI.Application({
@@ -11,6 +12,9 @@ const app = new PIXI.Application({
     autoDensity: true
 });
 document.body.appendChild(app.view);
+
+// Initialize stats
+const stats = new Stats(app.renderer);
 
 // Example Rive animation URL - replace with your own
 const riveUrl = 'https://cdn.rive.app/animations/vehicles.riv';
@@ -81,4 +85,9 @@ document.getElementById('addButton').addEventListener('click', createNewInstance
 createNewInstance();
 
 // Handle window resize
-window.addEventListener('resize', updateGridLayout); 
+window.addEventListener('resize', updateGridLayout);
+
+// Add stats to the animation loop
+app.ticker.add(() => {
+    stats.update();
+}); 
