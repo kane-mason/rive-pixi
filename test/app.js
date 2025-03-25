@@ -1,10 +1,14 @@
-import { Application } from 'pixi.js';
+import * as PIXI from 'pixi.js';
 import { RiveSprite, Fit, Alignment } from '../dist/rive_pixi.js';
 
 // Create the PixiJS application
-const app = new Application({
+const app = new PIXI.Application({
     background: '#000000',
     resizeTo: window,
+    powerPreference: 'high-performance',
+    antialias: true,
+    resolution: window.devicePixelRatio || 1,
+    autoDensity: true
 });
 document.body.appendChild(app.view);
 
