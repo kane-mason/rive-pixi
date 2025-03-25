@@ -282,6 +282,11 @@ export class RiveSprite extends Sprite {
         }
     }
     createCanvas() {
+        if (typeof OffscreenCanvas !== 'undefined' && !this._debug) {
+            // Use OffscreenCanvas for better performance when available and not in debug mode
+            return new OffscreenCanvas(1, 1);
+        }
+        // Fallback to regular canvas for debug mode or when OffscreenCanvas is not supported
         const canvas = document.createElement("canvas");
         if (this._debug) {
             canvas.style.position = "fixed";

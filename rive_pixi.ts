@@ -127,7 +127,7 @@ export class RiveSprite extends Sprite {
   private _rive?: RiveCanvas;
   private _file?: CachedRiveFile;
   private _renderer?: WrappedRenderer;
-  private _canvas?: HTMLCanvasElement;
+  private _canvas?: HTMLCanvasElement | OffscreenCanvas;
   private _enabled: boolean = false;
   private _animFrame: number = 0;
   private _lastTime: number = 0;
@@ -224,7 +224,13 @@ export class RiveSprite extends Sprite {
     }
   }
 
-  private createCanvas(): HTMLCanvasElement {
+  private createCanvas(): HTMLCanvasElement | OffscreenCanvas {
+    if (typeof OffscreenCanvas !== 'undefined' && !this._debug) {
+      // Use OffscreenCanvas for better performance when available and not in debug mode
+      return new OffscreenCanvas(1, 1);
+    }
+
+    // Fallback to regular canvas for debug mode or when OffscreenCanvas is not supported
     const canvas = document.createElement("canvas");
     if (this._debug) {
       canvas.style.position = "fixed";
