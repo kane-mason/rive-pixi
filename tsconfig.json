@@ -19,6 +19,9 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Generate d.ts */
-    "declaration": true
+    "declaration": true,
+    
+    /* Output */
+    "outDir": "./dist"
   }
 }
