@@ -67,16 +67,7 @@ export enum Alignment {
   BottomRight = "bottomRight",
 }
 
-/**
- * WebAssembly Rive module loader
- * You can change wasm path by calling "setWasmPath" function
- * before creating RiveSprite instances!
- */
-var WASM_PATH = "https://unpkg.com/@rive-app/canvas-advanced-single@2.7.3/rive.wasm";
-const riveApp = Rive({ locateFile: () => WASM_PATH });
-export function setWasmPath(path: string): void {
-  WASM_PATH = path;
-}
+const riveApp = Rive();
 
 /**
  * Properties accepted by RiveSprite Component

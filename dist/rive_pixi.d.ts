@@ -20,7 +20,6 @@ export declare enum Alignment {
     BottomCenter = "bottomCenter",
     BottomRight = "bottomRight"
 }
-export declare function setWasmPath(path: string): void;
 /**
  * Properties accepted by RiveSprite Component
  * @param {string} asset name of the asset element (will be loaded if still not loaded) or *.riv file content (Uint8Array)

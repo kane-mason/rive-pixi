@@ -42,16 +42,7 @@ export var Alignment;
     Alignment["BottomCenter"] = "bottomCenter";
     Alignment["BottomRight"] = "bottomRight";
 })(Alignment || (Alignment = {}));
-/**
- * WebAssembly Rive module loader
- * You can change wasm path by calling "setWasmPath" function
- * before creating RiveSprite instances!
- */
-var WASM_PATH = "https://unpkg.com/@rive-app/canvas-advanced-single@2.7.3/rive.wasm";
-const riveApp = Rive({ locateFile: () => WASM_PATH });
-export function setWasmPath(path) {
-    WASM_PATH = path;
-}
+const riveApp = Rive();
 /**
  * RiveSprite component extended from Pixi.js Sprite
  *
