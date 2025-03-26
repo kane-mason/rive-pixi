@@ -25,6 +25,83 @@ interface CachedRiveFile extends File {
 }
 
 /**
+ * Manages Rive initialization and file caching
+ */
+class RiveManager {
+  private static instance: RiveManager;
+  private riveInstance?: RiveCanvas;
+  private fileCache: Map<string, CachedRiveFile> = new Map();
+  private initializationPromise?: Promise<RiveCanvas>;
+
+  private constructor() {}
+
+  static getInstance(): RiveManager {
+    if (!RiveManager.instance) {
+      RiveManager.instance = new RiveManager();
+    }
+    return RiveManager.instance;
+  }
+
+  async initialize(): Promise<RiveCanvas> {
+    if (!this.initializationPromise) {
+      this.initializationPromise = Rive().then(rive => {
+        this.riveInstance = rive;
+        return rive;
+      });
+    }
+    return this.initializationPromise;
+  }
+
+  async loadFile(asset: string | Uint8Array): Promise<CachedRiveFile> {
+    const rive = await this.initialize();
+
+    // Use cached file if available
+    if (typeof asset === 'string' && this.fileCache.has(asset)) {
+      const file = this.fileCache.get(asset)!;
+      file.refCount++;
+      return file;
+    }
+
+    // Load new file
+    const assetData = typeof asset === "string" ? await Assets.load(asset) : asset;
+    const file = await rive.load(assetData) as CachedRiveFile;
+    file.refCount = 1;
+    
+    // Cache the file if it's from a URL
+    if (typeof asset === 'string') {
+      this.fileCache.set(asset, file);
+    }
+
+    return file;
+  }
+
+  releaseFile(assetKey: string): void {
+    const file = this.fileCache.get(assetKey);
+    if (file) {
+      file.refCount--;
+      if (file.refCount <= 0) {
+        file.delete();
+        this.fileCache.delete(assetKey);
+      }
+    }
+  }
+
+  getRiveInstance(): RiveCanvas | undefined {
+    return this.riveInstance;
+  }
+
+  // Add method to check if a file is cached
+  isFileCached(assetKey: string): boolean {
+    return this.fileCache.has(assetKey);
+  }
+
+  // Add method to get cached file without incrementing ref count
+  peekCachedFile(assetKey: string): CachedRiveFile | undefined {
+    return this.fileCache.get(assetKey);
+  }
+}
+
+/**
  * Register Pixi.js extension for loading Rive files (.riv)
  */
 extensions.add({
@@ -66,8 +143,6 @@ export enum Alignment {
   BottomCenter = "bottomCenter",
   BottomRight = "bottomRight",
 }
-
-const riveApp = Rive();
 
 /**
  * Properties accepted by RiveSprite Component
@@ -112,9 +187,6 @@ type RiveOptions = {
  * @param {number} maxHeight max height of sprite (original Rive artboard size will be used if maxHeight is not set)
  */
 export class RiveSprite extends Sprite {
-  private static fileCache: Map<string, CachedRiveFile> = new Map();
-  private static riveInstance?: RiveCanvas;
-  
   private _rive?: RiveCanvas;
   private _file?: CachedRiveFile;
   private _renderer?: WrappedRenderer;
@@ -145,7 +217,10 @@ export class RiveSprite extends Sprite {
     
     // Initialize Rive and load file
     this.initRive(options.asset).then(() => {
-      if (!this._rive || !this._file) return;
+      if (!this._rive || !this._file) {
+        console.error('Failed to initialize Rive or load file');
+        return;
+      }
       
       // Create canvas and renderer
       this._canvas = this.createCanvas();
@@ -159,19 +234,38 @@ export class RiveSprite extends Sprite {
       this.playAnimation(options.animation);
       
       // Force an initial render to ensure texture is ready
-      if (this.artboard && this._renderer) {
+      if (this.artboard && this._renderer && this._canvas) {
+        // Get initial bounds
+        const bounds = this.artboard.bounds;
+        const { minX, minY, maxX, maxY } = bounds;
+        const originalWidth = maxX - minX;
+        const originalHeight = maxY - minY;
+        
+        // Set initial dimensions if not already set
+        if (!this.maxWidth && !this.maxHeight) {
+          this.maxWidth = originalWidth;
+          this.maxHeight = originalHeight;
+        }
+        
+        // Set initial canvas size
+        this._canvas.width = this.maxWidth;
+        this._canvas.height = this.maxHeight;
+        
+        // Initial render
         this._renderer.clear();
         this._renderer.save();
         this.artboard.draw(this._renderer);
         this._renderer.restore();
         this._renderer.flush();
         
-        // Create texture after initial render
-        if (this._canvas) {
-          this.texture.destroy();
-          this.texture = Texture.from(this._canvas);
-          this.texture.update();
-        }
+        // Create initial texture
+        this.texture.destroy();
+        this.texture = Texture.from(this._canvas);
+        this.texture.update();
+        
+        // Update sprite dimensions
+        this.width = this.maxWidth;
+        this.height = this.maxHeight;
       }
       
       // Start rendering if autoplay is enabled
@@ -182,47 +276,33 @@ export class RiveSprite extends Sprite {
       if (options.onReady) {
         options.onReady(this._rive);
       }
+    }).catch(error => {
+      console.error('Error initializing RiveSprite:', error);
     });
   }
 
   private async initRive(riv: string | Uint8Array): Promise<void> {
     try {
-      // Initialize Rive instance if not already done
-      if (!RiveSprite.riveInstance) {
-        RiveSprite.riveInstance = await riveApp;
-      }
-      this._rive = RiveSprite.riveInstance;
-
-      // Use cached file if available
-      if (typeof riv === 'string' && RiveSprite.fileCache.has(riv)) {
-        this._file = RiveSprite.fileCache.get(riv)!;
-        this._file.refCount++;
-        return;
-      }
-
-      // Load new file
-      const asset = typeof riv === "string" ? await Assets.load(riv) : riv;
-      const file = await this._rive.load(asset) as CachedRiveFile;
-      file.refCount = 1;
-      this._file = file;
-      
-      // Cache the file if it's from a URL
-      if (typeof riv === 'string') {
-        RiveSprite.fileCache.set(riv, this._file);
-      }
+      const riveManager = RiveManager.getInstance();
+      const rive = await riveManager.initialize();
+      this._rive = rive;
+      this._file = await riveManager.loadFile(riv);
     } catch (error) {
       console.error('Failed to initialize Rive:', error);
+      throw error; // Re-throw to be caught by the constructor's catch block
     }
   }
 
   private createCanvas(): HTMLCanvasElement | OffscreenCanvas {
     if (typeof OffscreenCanvas !== 'undefined' && !this._debug) {
       // Use OffscreenCanvas for better performance when available and not in debug mode
-      return new OffscreenCanvas(1, 1);
+      return new OffscreenCanvas(100, 100); // Start with a reasonable size
     }
 
     // Fallback to regular canvas for debug mode or when OffscreenCanvas is not supported
     const canvas = document.createElement("canvas");
+    canvas.width = 100;  // Start with a reasonable size
+    canvas.height = 100;
     if (this._debug) {
       canvas.style.position = "fixed";
       canvas.style.top = "0";
@@ -363,13 +443,9 @@ export class RiveSprite extends Sprite {
     this.artboard?.delete();
     this._renderer?.delete();
     
-    // Decrement reference count in file cache
-    if (this._file && this._assetKey) {
-      this._file.refCount--;
-      if (this._file.refCount <= 0) {
-        this._file.delete();
-        RiveSprite.fileCache.delete(this._assetKey);
-      }
+    // Release file reference
+    if (this._assetKey) {
+      RiveManager.getInstance().releaseFile(this._assetKey);
     }
   }
 

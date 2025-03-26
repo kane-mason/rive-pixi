@@ -62,8 +62,6 @@ type RiveOptions = {
  * @param {number} maxHeight max height of sprite (original Rive artboard size will be used if maxHeight is not set)
  */
 export declare class RiveSprite extends Sprite {
-    private static fileCache;
-    private static riveInstance?;
     private _rive?;
     private _file?;
     private _renderer?;
