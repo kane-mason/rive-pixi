@@ -33,8 +33,46 @@ class RiveManager {
   private riveInstance?: RiveCanvas;
   private fileCache: Map<string, CachedRiveFile> = new Map();
   private initializationPromise?: Promise<RiveCanvas>;
+  private activeSprites: Set<RiveSprite> = new Set();
+  private lastTime: number = 0;
 
-  private constructor() {}
+  private constructor() {
+    // Set up the global render loop
+    Ticker.shared.add(this.updateSprites.bind(this));
+  }
+
+  private updateSprites(): void {
+    const time = Ticker.shared.lastTime;
+    if (!this.lastTime) this.lastTime = time;
+    const elapsedTime = (time - this.lastTime) / 1000;
+    this.lastTime = time;
+
+    // Update all active sprites
+    this.activeSprites.forEach(sprite => {
+      if (sprite.artboard && sprite.enabled) {
+        // Update animations and state machines
+        sprite.advanceStateMachines(elapsedTime);
+        sprite.advanceAnimations(elapsedTime);
+        sprite.artboard.advance(elapsedTime);
+
+        // Render to canvas
+        sprite.renderToCanvas();
+      }
+    });
+
+    // Keep Rive's internal animation system running
+    if (this.riveInstance) {
+      this.riveInstance.requestAnimationFrame(() => {});
+    }
+  }
+
+  registerSprite(sprite: RiveSprite): void {
+    this.activeSprites.add(sprite);
+  }
+
+  unregisterSprite(sprite: RiveSprite): void {
+    this.activeSprites.delete(sprite);
+  }
 
   static getInstance(): RiveManager {
     if (!RiveManager.instance) {
@@ -192,13 +230,10 @@ export class RiveSprite extends Sprite {
   private _file?: CachedRiveFile;
   private _renderer?: WrappedRenderer;
   private _canvas?: HTMLCanvasElement | OffscreenCanvas;
-  private _enabled: boolean = false;
-  private _lastTime: number = 0;
+  enabled: boolean = false;
   private _debug: boolean = false;
   private _aligned?: Mat2D;
   private _assetKey: string = '';
-  private _boundRenderLoop;
-  private _boundFakeRenderLoop;
   
   maxWidth: number = 0;
   maxHeight: number = 0;
@@ -216,8 +251,6 @@ export class RiveSprite extends Sprite {
     this.onStateChange = options.onStateChange;
     this.initEvents(options.interactive ?? false);
     this._assetKey = typeof options.asset === 'string' ? options.asset : '';
-    this._boundRenderLoop = this.renderLoop.bind(this);
-    this._boundFakeRenderLoop = this.fakeRenderLoop.bind(this);
     
     this.initRive(options.asset)
       .then(() => this.init(options))
@@ -292,7 +325,7 @@ export class RiveSprite extends Sprite {
     return canvas;
   }
 
-  private renderToCanvas(): void {
+  renderToCanvas(): void {
     if (this.artboard && this._renderer) {
       this._renderer.clear();
       this.artboard.draw(this._renderer);
@@ -346,24 +379,6 @@ export class RiveSprite extends Sprite {
     this.height = this.maxHeight;
   }
 
-  private fakeRenderLoop = (): void => {}
-
-  private renderLoop = (): void => {
-    const time = Ticker.shared.lastTime;
-    if (!this._lastTime) this._lastTime = time;
-    const elapsedTime = (time - this._lastTime) / 1000;
-    this._lastTime = time;
-
-    if (this.artboard && this._renderer && this._enabled) {
-      this.advanceStateMachines(elapsedTime);
-      this.advanceAnimations(elapsedTime);
-      this.artboard.advance(elapsedTime);
-      this.renderToCanvas();
-    }
-
-    this._rive!.requestAnimationFrame(this._boundFakeRenderLoop);
-  };
-
   loadArtboard(artboard: string | undefined): void {  
     if (this.artboard) {
       this.artboard.delete();
@@ -402,13 +417,13 @@ export class RiveSprite extends Sprite {
   }
 
   enable(): void {
-    this._enabled = true;
-    Ticker.shared.add(this._boundRenderLoop);
+    this.enabled = true;
+    RiveManager.getInstance().registerSprite(this);
   }
 
   disable(): void {
-    this._enabled = false;
-    Ticker.shared.remove(this._boundRenderLoop);
+    this.enabled = false;
+    RiveManager.getInstance().unregisterSprite(this);
   }
 
   destroy(): void {
@@ -571,11 +586,7 @@ export class RiveSprite extends Sprite {
     return [(x - tx) / xx, (y - ty) / yy];
   }
 
-  /**
-   * Play all state machines animations
-   * @param {number} elapsed time from last update
-   */
-  private advanceStateMachines(elapsed: number): void {
+  advanceStateMachines(elapsed: number): void {
     this.stateMachines.map((m) => {
       m.advance(elapsed);
       if (this.onStateChange && m.stateChangedCount()) {
@@ -590,11 +601,7 @@ export class RiveSprite extends Sprite {
     });
   }
 
-  /**
-   * Play all scene animations
-   * @param {number} elapsed time from last update
-   */
-  private advanceAnimations(elapsed: number): void {
+  advanceAnimations(elapsed: number): void {
     this.animations.map((a) => {
       a.advance(elapsed);
       a.apply(1);

@@ -23,6 +23,48 @@ class RiveManager {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "activeSprites", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: new Set()
+        });
+        Object.defineProperty(this, "lastTime", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        // Set up the global render loop
+        Ticker.shared.add(this.updateSprites.bind(this));
+    }
+    updateSprites() {
+        const time = Ticker.shared.lastTime;
+        if (!this.lastTime)
+            this.lastTime = time;
+        const elapsedTime = (time - this.lastTime) / 1000;
+        this.lastTime = time;
+        // Update all active sprites
+        this.activeSprites.forEach(sprite => {
+            if (sprite.artboard && sprite.enabled) {
+                // Update animations and state machines
+                sprite.advanceStateMachines(elapsedTime);
+                sprite.advanceAnimations(elapsedTime);
+                sprite.artboard.advance(elapsedTime);
+                // Render to canvas
+                sprite.renderToCanvas();
+            }
+        });
+        // Keep Rive's internal animation system running
+        if (this.riveInstance) {
+            this.riveInstance.requestAnimationFrame(() => { });
+        }
+    }
+    registerSprite(sprite) {
+        this.activeSprites.add(sprite);
+    }
+    unregisterSprite(sprite) {
+        this.activeSprites.delete(sprite);
     }
     static getInstance() {
         if (!RiveManager.instance) {
@@ -166,17 +208,11 @@ export class RiveSprite extends Sprite {
             writable: true,
             value: void 0
         });
-        Object.defineProperty(this, "_enabled", {
+        Object.defineProperty(this, "enabled", {
             enumerable: true,
             configurable: true,
             writable: true,
             value: false
-        });
-        Object.defineProperty(this, "_lastTime", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: 0
         });
         Object.defineProperty(this, "_debug", {
             enumerable: true,
@@ -195,18 +231,6 @@ export class RiveSprite extends Sprite {
             configurable: true,
             writable: true,
             value: ''
-        });
-        Object.defineProperty(this, "_boundRenderLoop", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: void 0
-        });
-        Object.defineProperty(this, "_boundFakeRenderLoop", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: void 0
         });
         Object.defineProperty(this, "maxWidth", {
             enumerable: true,
@@ -262,37 +286,10 @@ export class RiveSprite extends Sprite {
             writable: true,
             value: void 0
         });
-        Object.defineProperty(this, "fakeRenderLoop", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: () => { }
-        });
-        Object.defineProperty(this, "renderLoop", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: () => {
-                const time = Ticker.shared.lastTime;
-                if (!this._lastTime)
-                    this._lastTime = time;
-                const elapsedTime = (time - this._lastTime) / 1000;
-                this._lastTime = time;
-                if (this.artboard && this._renderer && this._enabled) {
-                    this.advanceStateMachines(elapsedTime);
-                    this.advanceAnimations(elapsedTime);
-                    this.artboard.advance(elapsedTime);
-                    this.renderToCanvas();
-                }
-                this._rive.requestAnimationFrame(this._boundFakeRenderLoop);
-            }
-        });
         this._debug = options.debug ?? false;
         this.onStateChange = options.onStateChange;
         this.initEvents(options.interactive ?? false);
         this._assetKey = typeof options.asset === 'string' ? options.asset : '';
-        this._boundRenderLoop = this.renderLoop.bind(this);
-        this._boundFakeRenderLoop = this.fakeRenderLoop.bind(this);
         this.initRive(options.asset)
             .then(() => this.init(options))
             .catch(error => {
@@ -436,12 +433,12 @@ export class RiveSprite extends Sprite {
         }
     }
     enable() {
-        this._enabled = true;
-        Ticker.shared.add(this._boundRenderLoop);
+        this.enabled = true;
+        RiveManager.getInstance().registerSprite(this);
     }
     disable() {
-        this._enabled = false;
-        Ticker.shared.remove(this._boundRenderLoop);
+        this.enabled = false;
+        RiveManager.getInstance().unregisterSprite(this);
     }
     destroy() {
         super.destroy();
@@ -597,10 +594,6 @@ export class RiveSprite extends Sprite {
         const { tx, ty, xx, yy } = this._aligned || { tx: 0, ty: 0, xx: 1, yy: 1 };
         return [(x - tx) / xx, (y - ty) / yy];
     }
-    /**
-     * Play all state machines animations
-     * @param {number} elapsed time from last update
-     */
     advanceStateMachines(elapsed) {
         this.stateMachines.map((m) => {
             m.advance(elapsed);
@@ -615,10 +608,6 @@ export class RiveSprite extends Sprite {
             }
         });
     }
-    /**
-     * Play all scene animations
-     * @param {number} elapsed time from last update
-     */
     advanceAnimations(elapsed) {
         this.animations.map((a) => {
             a.advance(elapsed);

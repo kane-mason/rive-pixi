@@ -66,13 +66,10 @@ export declare class RiveSprite extends Sprite {
     private _file?;
     private _renderer?;
     private _canvas?;
-    private _enabled;
-    private _lastTime;
+    enabled: boolean;
     private _debug;
     private _aligned?;
     private _assetKey;
-    private _boundRenderLoop;
-    private _boundFakeRenderLoop;
     maxWidth: number;
     maxHeight: number;
     fit: Fit;
@@ -86,13 +83,11 @@ export declare class RiveSprite extends Sprite {
     private initRive;
     private init;
     private createCanvas;
-    private renderToCanvas;
+    renderToCanvas(): void;
     private updateDimensions;
     private updateCanvasSize;
     private updateRendererAlignment;
     private updateSpriteSize;
-    private fakeRenderLoop;
-    private renderLoop;
     loadArtboard(artboard: string | undefined): void;
     updateSize(): void;
     enable(): void;
@@ -148,16 +143,8 @@ export declare class RiveSprite extends Sprite {
      * @returns
      */
     private translatePoint;
-    /**
-     * Play all state machines animations
-     * @param {number} elapsed time from last update
-     */
-    private advanceStateMachines;
-    /**
-     * Play all scene animations
-     * @param {number} elapsed time from last update
-     */
-    private advanceAnimations;
+    advanceStateMachines(elapsed: number): void;
+    advanceAnimations(elapsed: number): void;
     /**
      * Receive input fields from all active state machines
      */
