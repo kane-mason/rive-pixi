@@ -283,13 +283,9 @@ export class RiveSprite extends Sprite {
                     this.advanceStateMachines(elapsedTime);
                     this.advanceAnimations(elapsedTime);
                     this.artboard.advance(elapsedTime);
-                    // Render to canvas
                     this._renderer.clear();
-                    this._renderer.save();
                     this.artboard.draw(this._renderer);
-                    this._renderer.restore();
                     this._renderer.flush();
-                    // Update Pixi texture
                     this.texture.update();
                 }
                 this._rive.requestAnimationFrame(this._boundFakeRenderLoop);
@@ -330,12 +326,6 @@ export class RiveSprite extends Sprite {
                 // Set initial canvas size
                 this._canvas.width = this.maxWidth;
                 this._canvas.height = this.maxHeight;
-                // Initial render
-                this._renderer.clear();
-                this._renderer.save();
-                this.artboard.draw(this._renderer);
-                this._renderer.restore();
-                this._renderer.flush();
                 // Create initial texture
                 this.texture.destroy();
                 this.texture = Texture.from(this._canvas);
@@ -443,9 +433,7 @@ export class RiveSprite extends Sprite {
             this.height = this.maxHeight;
             // Force immediate render and texture update
             this._renderer.clear();
-            this._renderer.save();
             this.artboard.draw(this._renderer);
-            this._renderer.restore();
             this._renderer.flush();
             // Destroy old texture and create new one
             this.texture.destroy();
