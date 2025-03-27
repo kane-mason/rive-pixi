@@ -84,7 +84,13 @@ export declare class RiveSprite extends Sprite {
     artboard?: Artboard;
     constructor(options: RiveOptions);
     private initRive;
+    private init;
     private createCanvas;
+    private renderToCanvas;
+    private updateDimensions;
+    private updateCanvasSize;
+    private updateRendererAlignment;
+    private updateSpriteSize;
     private fakeRenderLoop;
     private renderLoop;
     loadArtboard(artboard: string | undefined): void;

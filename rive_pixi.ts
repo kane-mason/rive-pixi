@@ -211,7 +211,7 @@ export class RiveSprite extends Sprite {
   artboard?: Artboard;
 
   constructor(options: RiveOptions) {
-    super(Texture.EMPTY);  // Start with an empty texture
+    super(Texture.EMPTY);
     this._debug = options.debug ?? false;
     this.onStateChange = options.onStateChange;
     this.initEvents(options.interactive ?? false);
@@ -219,63 +219,11 @@ export class RiveSprite extends Sprite {
     this._boundRenderLoop = this.renderLoop.bind(this);
     this._boundFakeRenderLoop = this.fakeRenderLoop.bind(this);
     
-    // Initialize Rive and load file
-    this.initRive(options.asset).then(() => {
-      if (!this._rive || !this._file) {
-        console.error('Failed to initialize Rive or load file');
-        return;
-      }
-      
-      // Create canvas and renderer
-      this._canvas = this.createCanvas();
-      this._renderer = this._rive.makeRenderer(this._canvas);
-      
-      // Load artboard first
-      this.loadArtboard(options.artboard);
-      
-      // Set up animations and state machines
-      this.loadStateMachine(options.stateMachine);
-      this.playAnimation(options.animation);
-      
-      // Force an initial render to ensure texture is ready
-      if (this.artboard && this._renderer && this._canvas) {
-        // Get initial bounds
-        const bounds = this.artboard.bounds;
-        const { minX, minY, maxX, maxY } = bounds;
-        const originalWidth = maxX - minX;
-        const originalHeight = maxY - minY;
-        
-        // Set initial dimensions if not already set
-        if (!this.maxWidth && !this.maxHeight) {
-          this.maxWidth = originalWidth;
-          this.maxHeight = originalHeight;
-        }
-        
-        // Set initial canvas size
-        this._canvas.width = this.maxWidth;
-        this._canvas.height = this.maxHeight;
-        
-        // Create initial texture
-        this.texture.destroy();
-        this.texture = Texture.from(this._canvas);
-        this.texture.update();
-        
-        // Update sprite dimensions
-        this.width = this.maxWidth;
-        this.height = this.maxHeight;
-      }
-      
-      // Start rendering if autoplay is enabled
-      if (options.autoPlay) {
-        this.enable();
-      }
-      
-      if (options.onReady) {
-        options.onReady(this._rive);
-      }
-    }).catch(error => {
-      console.error('Error initializing RiveSprite:', error);
-    });
+    this.initRive(options.asset)
+      .then(() => this.init(options))
+      .catch(error => {
+        console.error('Error initializing RiveSprite:', error);
+      });
   }
 
   private async initRive(riv: string | Uint8Array): Promise<void> {
@@ -287,6 +235,40 @@ export class RiveSprite extends Sprite {
     } catch (error) {
       console.error('Failed to initialize Rive:', error);
       throw error; // Re-throw to be caught by the constructor's catch block
+    }
+  }
+
+  private async init(options: RiveOptions) {
+    if (!this._rive || !this._file) {
+      console.error('Failed to initialize Rive or load file');
+      return;
+    }
+    
+    this._canvas = this.createCanvas();
+    this._renderer = this._rive.makeRenderer(this._canvas);
+    
+    this.loadArtboard(options.artboard);
+    this.loadStateMachine(options.stateMachine);
+    this.playAnimation(options.animation);
+    
+    if (this.artboard && this._renderer && this._canvas) {
+      const bounds = this.artboard.bounds;
+      this.updateDimensions(bounds);
+      this.updateCanvasSize();
+      
+      // Create initial texture
+      this.texture.destroy();
+      this.texture = Texture.from(this._canvas);
+      this.texture.update();
+      this.updateSpriteSize();
+    }
+    
+    if (options.autoPlay) {
+      this.enable();
+    }
+    
+    if (options.onReady) {
+      options.onReady(this._rive);
     }
   }
 
@@ -310,6 +292,60 @@ export class RiveSprite extends Sprite {
     return canvas;
   }
 
+  private renderToCanvas(): void {
+    if (this.artboard && this._renderer) {
+      this._renderer.clear();
+      this.artboard.draw(this._renderer);
+      this._renderer.flush();
+      this.texture.update();
+    }
+  }
+
+  private updateDimensions(bounds: any): void {
+    const { minX, minY, maxX, maxY } = bounds;
+    const originalWidth = maxX - minX;
+    const originalHeight = maxY - minY;
+    
+    // Always maintain aspect ratio
+    const aspectRatio = originalWidth / originalHeight;
+    
+    // If maxWidth is set, use it as the primary dimension
+    if (this.maxWidth) {
+      this.maxHeight = this.maxWidth / aspectRatio;
+    } 
+    // If maxHeight is set, use it as the primary dimension
+    else if (this.maxHeight) {
+      this.maxWidth = this.maxHeight * aspectRatio;
+    }
+    // If neither is set, use original dimensions
+    else {
+      this.maxWidth = originalWidth;
+      this.maxHeight = originalHeight;
+    }
+  }
+
+  private updateCanvasSize(): void {
+    if (this._canvas) {
+      this._canvas.width = this.maxWidth;
+      this._canvas.height = this.maxHeight;
+    }
+  }
+
+  private updateRendererAlignment(bounds: any): void {
+    if (this._rive && this._renderer && this.artboard) {
+      const fit = this._rive.Fit[this.fit];
+      const align = this._rive.Alignment[this.align];
+      const frame = { minX: 0, minY: 0, maxX: this.maxWidth, maxY: this.maxHeight };
+      this._aligned = this._rive.computeAlignment(fit, align, frame, bounds);
+      this._renderer.align(fit, align, frame, bounds);
+    }
+  }
+
+  private updateSpriteSize(): void {
+    this.width = this.maxWidth;
+    this.height = this.maxHeight;
+  }
+
   private fakeRenderLoop = (): void => {}
 
   private renderLoop = (): void => {
@@ -319,15 +355,10 @@ export class RiveSprite extends Sprite {
     this._lastTime = time;
 
     if (this.artboard && this._renderer && this._enabled) {
-      // Update animations and state machines
       this.advanceStateMachines(elapsedTime);
       this.advanceAnimations(elapsedTime);
       this.artboard.advance(elapsedTime);
-
-      this._renderer.clear();
-      this.artboard.draw(this._renderer);
-      this._renderer.flush();
-      this.texture.update();
+      this.renderToCanvas();
     }
 
     this._rive!.requestAnimationFrame(this._boundFakeRenderLoop);
@@ -343,18 +374,8 @@ export class RiveSprite extends Sprite {
         : this._file.defaultArtboard();
       
       if (this.artboard) {
-        // Get initial bounds and set maxWidth/maxHeight if not already set
         const bounds = this.artboard.bounds;
-        const { minX, minY, maxX, maxY } = bounds;
-        const originalWidth = maxX - minX;
-        const originalHeight = maxY - minY;
-        
-        // Set initial dimensions if not already set
-        if (!this.maxWidth && !this.maxHeight) {
-          this.maxWidth = originalWidth;
-          this.maxHeight = originalHeight;
-        }
-        
+        this.updateDimensions(bounds);
         this.updateSize();
       }
     }
@@ -363,48 +384,17 @@ export class RiveSprite extends Sprite {
   updateSize(): void {
     if (this.artboard && this._rive && this._renderer && this._canvas) {
       const bounds = this.artboard.bounds;
-      const { minX, minY, maxX, maxY } = bounds;
-      const originalWidth = maxX - minX;
-      const originalHeight = maxY - minY;
+      this.updateDimensions(bounds);
+      this.updateCanvasSize();
+      this.updateRendererAlignment(bounds);
+      this.updateSpriteSize();
       
-      // Always maintain aspect ratio
-      const aspectRatio = originalWidth / originalHeight;
-      
-      // If maxWidth is set, use it as the primary dimension
-      if (this.maxWidth) {
-        this.maxHeight = this.maxWidth / aspectRatio;
-      } 
-      // If maxHeight is set, use it as the primary dimension
-      else if (this.maxHeight) {
-        this.maxWidth = this.maxHeight * aspectRatio;
-      }
-      // If neither is set, use original dimensions
-      else {
-        this.maxWidth = originalWidth;
-        this.maxHeight = originalHeight;
-      }
-      
-      // Set canvas size
-      this._canvas.width = this.maxWidth;
-      this._canvas.height = this.maxHeight;
-      
-      // Update renderer alignment
-      const fit = this._rive.Fit[this.fit];
-      const align = this._rive.Alignment[this.align];
-      const frame = { minX: 0, minY: 0, maxX: this.maxWidth, maxY: this.maxHeight };
-      this._aligned = this._rive.computeAlignment(fit, align, frame, bounds);
-      this._renderer.align(fit, align, frame, bounds);
-      
-      // Update sprite dimensions
-      this.width = this.maxWidth;
-      this.height = this.maxHeight;
-      
-      // Force immediate render and texture update
+      // Render to canvas first
       this._renderer.clear();
       this.artboard.draw(this._renderer);
       this._renderer.flush();
       
-      // Destroy old texture and create new one
+      // Create new texture from the rendered canvas
       this.texture.destroy();
       this.texture = Texture.from(this._canvas);
       this.texture.update();
