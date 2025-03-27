@@ -1,5 +1,6 @@
 import { Assets, Sprite, Texture, settings, extensions, checkExtension, ExtensionType, LoaderParserPriority, Ticker, } from "pixi.js";
 import Rive from "@rive-app/canvas-advanced-single";
+const NOOP = () => { };
 /**
  * Manages Rive initialization and file caching
  */
@@ -57,7 +58,7 @@ class RiveManager {
         });
         // Keep Rive's internal animation system running
         if (this.riveInstance) {
-            this.riveInstance.requestAnimationFrame(() => { });
+            this.riveInstance.requestAnimationFrame(NOOP);
         }
     }
     registerSprite(sprite) {

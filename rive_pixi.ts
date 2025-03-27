@@ -25,6 +25,8 @@ interface CachedRiveFile extends File {
   refCount: number;
 }
 
+const NOOP = () => {};
+
 /**
  * Manages Rive initialization and file caching
  */
@@ -62,7 +64,7 @@ class RiveManager {
 
     // Keep Rive's internal animation system running
     if (this.riveInstance) {
-      this.riveInstance.requestAnimationFrame(() => {});
+      this.riveInstance.requestAnimationFrame(NOOP);
     }
   }
 
