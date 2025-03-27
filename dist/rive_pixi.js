@@ -1,4 +1,4 @@
-import { Assets, Sprite, Texture, settings, extensions, checkExtension, ExtensionType, LoaderParserPriority, } from "pixi.js";
+import { Assets, Sprite, Texture, settings, extensions, checkExtension, ExtensionType, LoaderParserPriority, Ticker, } from "pixi.js";
 import Rive from "@rive-app/canvas-advanced-single";
 /**
  * Manages Rive initialization and file caching
@@ -172,12 +172,6 @@ export class RiveSprite extends Sprite {
             writable: true,
             value: false
         });
-        Object.defineProperty(this, "_animFrame", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: 0
-        });
         Object.defineProperty(this, "_lastTime", {
             enumerable: true,
             configurable: true,
@@ -201,6 +195,18 @@ export class RiveSprite extends Sprite {
             configurable: true,
             writable: true,
             value: ''
+        });
+        Object.defineProperty(this, "_boundRenderLoop", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "_boundFakeRenderLoop", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
         });
         Object.defineProperty(this, "maxWidth", {
             enumerable: true,
@@ -256,11 +262,18 @@ export class RiveSprite extends Sprite {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "fakeRenderLoop", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: () => { }
+        });
         Object.defineProperty(this, "renderLoop", {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: (time) => {
+            value: () => {
+                const time = Ticker.shared.lastTime;
                 if (!this._lastTime)
                     this._lastTime = time;
                 const elapsedTime = (time - this._lastTime) / 1000;
@@ -279,15 +292,15 @@ export class RiveSprite extends Sprite {
                     // Update Pixi texture
                     this.texture.update();
                 }
-                if (this._enabled) {
-                    this._animFrame = this._rive.requestAnimationFrame(this.renderLoop);
-                }
+                this._rive.requestAnimationFrame(this._boundFakeRenderLoop);
             }
         });
         this._debug = options.debug ?? false;
         this.onStateChange = options.onStateChange;
         this.initEvents(options.interactive ?? false);
         this._assetKey = typeof options.asset === 'string' ? options.asset : '';
+        this._boundRenderLoop = this.renderLoop.bind(this);
+        this._boundFakeRenderLoop = this.fakeRenderLoop.bind(this);
         // Initialize Rive and load file
         this.initRive(options.asset).then(() => {
             if (!this._rive || !this._file) {
@@ -442,16 +455,11 @@ export class RiveSprite extends Sprite {
     }
     enable() {
         this._enabled = true;
-        if (!this._animFrame) {
-            this._animFrame = this._rive.requestAnimationFrame(this.renderLoop);
-        }
+        Ticker.shared.add(this._boundRenderLoop);
     }
     disable() {
         this._enabled = false;
-        if (this._animFrame) {
-            this._rive.cancelAnimationFrame(this._animFrame);
-            this._animFrame = 0;
-        }
+        Ticker.shared.remove(this._boundRenderLoop);
     }
     destroy() {
         super.destroy();

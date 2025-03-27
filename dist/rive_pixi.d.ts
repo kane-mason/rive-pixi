@@ -67,11 +67,12 @@ export declare class RiveSprite extends Sprite {
     private _renderer?;
     private _canvas?;
     private _enabled;
-    private _animFrame;
     private _lastTime;
     private _debug;
     private _aligned?;
     private _assetKey;
+    private _boundRenderLoop;
+    private _boundFakeRenderLoop;
     maxWidth: number;
     maxHeight: number;
     fit: Fit;
@@ -84,6 +85,7 @@ export declare class RiveSprite extends Sprite {
     constructor(options: RiveOptions);
     private initRive;
     private createCanvas;
+    private fakeRenderLoop;
     private renderLoop;
     loadArtboard(artboard: string | undefined): void;
     updateSize(): void;

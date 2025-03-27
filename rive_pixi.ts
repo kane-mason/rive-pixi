@@ -7,6 +7,7 @@ import {
   checkExtension,
   ExtensionType,
   LoaderParserPriority,
+  Ticker,
 } from "pixi.js";
 import Rive, {
   Artboard,
@@ -192,11 +193,12 @@ export class RiveSprite extends Sprite {
   private _renderer?: WrappedRenderer;
   private _canvas?: HTMLCanvasElement | OffscreenCanvas;
   private _enabled: boolean = false;
-  private _animFrame: number = 0;
   private _lastTime: number = 0;
   private _debug: boolean = false;
   private _aligned?: Mat2D;
   private _assetKey: string = '';
+  private _boundRenderLoop;
+  private _boundFakeRenderLoop;
   
   maxWidth: number = 0;
   maxHeight: number = 0;
@@ -214,6 +216,8 @@ export class RiveSprite extends Sprite {
     this.onStateChange = options.onStateChange;
     this.initEvents(options.interactive ?? false);
     this._assetKey = typeof options.asset === 'string' ? options.asset : '';
+    this._boundRenderLoop = this.renderLoop.bind(this);
+    this._boundFakeRenderLoop = this.fakeRenderLoop.bind(this);
     
     // Initialize Rive and load file
     this.initRive(options.asset).then(() => {
@@ -313,7 +317,10 @@ export class RiveSprite extends Sprite {
     return canvas;
   }
 
-  private renderLoop = (time: number): void => {
+  private fakeRenderLoop = (): void => {}
+
+  private renderLoop = (): void => {
+    const time = Ticker.shared.lastTime;
     if (!this._lastTime) this._lastTime = time;
     const elapsedTime = (time - this._lastTime) / 1000;
     this._lastTime = time;
@@ -335,12 +342,10 @@ export class RiveSprite extends Sprite {
       this.texture.update();
     }
 
-    if (this._enabled) {
-      this._animFrame = this._rive!.requestAnimationFrame(this.renderLoop);
-    }
+    this._rive!.requestAnimationFrame(this._boundFakeRenderLoop);
   };
 
-  loadArtboard(artboard: string | undefined): void {
+  loadArtboard(artboard: string | undefined): void {  
     if (this.artboard) {
       this.artboard.delete();
     }
@@ -422,17 +427,12 @@ export class RiveSprite extends Sprite {
 
   enable(): void {
     this._enabled = true;
-    if (!this._animFrame) {
-      this._animFrame = this._rive!.requestAnimationFrame(this.renderLoop);
-    }
+    Ticker.shared.add(this._boundRenderLoop);
   }
 
   disable(): void {
     this._enabled = false;
-    if (this._animFrame) {
-      this._rive!.cancelAnimationFrame(this._animFrame);
-      this._animFrame = 0;
-    }
+    Ticker.shared.remove(this._boundRenderLoop);
   }
 
   destroy(): void {
